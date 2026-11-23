@@ -12,7 +12,10 @@ import org.springframework.context.annotation.Import;
 /// so Spring caches it and the container starts once per test run.
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest
+@SpringBootTest(properties = {
+        // Concurrency tests start hundreds of virtual threads against a pool of 20 connections.
+        "spring.datasource.hikari.connection-timeout=30000"
+})
 @Import(PostgresTestcontainersConfiguration.class)
 public @interface IntegrationTest {
 }
