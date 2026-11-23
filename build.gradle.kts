@@ -42,7 +42,6 @@ dependencies {
     developmentOnly(libs.spring.boot.docker.compose)
 
     testImplementation(libs.spring.boot.starter.webmvc.test)
-    testImplementation(libs.spring.boot.starter.data.jpa.test)
     testImplementation(libs.spring.boot.resttestclient)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
