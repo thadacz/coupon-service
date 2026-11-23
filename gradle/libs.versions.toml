@@ -1,0 +1,38 @@
+[versions]
+spring-boot = "4.2.0"
+springdoc = "3.2.0"
+caffeine = "3.2.3"
+wiremock = "3.13.2"
+archunit = "1.4.2"
+jacoco = "0.8.15"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
+spring-boot-starter-cache = { module = "org.springframework.boot:spring-boot-starter-cache" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-docker-compose = { module = "org.springframework.boot:spring-boot-docker-compose" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+micrometer-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+spring-boot-starter-data-jpa-test = { module = "org.springframework.boot:spring-boot-starter-data-jpa-test" }
+spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
+mockito-core = { module = "org.mockito:mockito-core" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
