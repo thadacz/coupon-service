@@ -7,6 +7,8 @@ import org.springframework.context.annotation.Configuration;
 
 import pl.hadacz.coupons.coupon.application.CouponQueries;
 import pl.hadacz.coupons.coupon.application.CreateCouponHandler;
+import pl.hadacz.coupons.coupon.application.RedeemCouponHandler;
+import pl.hadacz.coupons.coupon.application.port.CountryResolver;
 import pl.hadacz.coupons.coupon.application.port.CouponRepository;
 
 /// Wires the framework-free use cases into Spring.
@@ -21,6 +23,11 @@ class CouponConfiguration {
     @Bean
     CreateCouponHandler createCouponHandler(CouponRepository coupons, Clock clock) {
         return new CreateCouponHandler(coupons, clock);
+    }
+
+    @Bean
+    RedeemCouponHandler redeemCouponHandler(CouponRepository coupons, CountryResolver countries, Clock clock) {
+        return new RedeemCouponHandler(coupons, countries, clock);
     }
 
     @Bean
