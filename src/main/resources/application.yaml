@@ -16,6 +16,21 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  http:
+    serviceclient:
+      geo:
+        base-url: ${GEO_BASE_URL:https://api.country.is}
+        connect-timeout: 500ms
+        read-timeout: 1s
+  cache:
+    cache-names: ip-country
+    caffeine:
+      spec: maximumSize=100000,expireAfterWrite=24h
 
 server:
   shutdown: graceful
+  # Tomcat's RemoteIpValve: X-Forwarded-For is honoured only when the request comes from a
+  # trusted proxy (server.tomcat.remoteip.internal-proxies; default: loopback and private
+  # networks). In production set it to the load balancer's addresses. Never trust the header
+  # from arbitrary clients: anyone could claim a Polish IP.
+  forward-headers-strategy: native
