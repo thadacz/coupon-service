@@ -43,6 +43,9 @@ class RedemptionControllerTest {
     @MockitoBean
     RedeemCouponHandler redeemCoupon;
 
+    @MockitoBean
+    RedemptionMetrics metrics;
+
     @Test
     @DisplayName("201 with the redemption, built from the normalized code and the connection's IP")
     void redeemed() {

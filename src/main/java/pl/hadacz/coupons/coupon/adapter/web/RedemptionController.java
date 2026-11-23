@@ -33,9 +33,11 @@ class RedemptionController {
     private static final String RETRY_AFTER_SECONDS = "5";
 
     private final RedeemCouponHandler redeemCoupon;
+    private final RedemptionMetrics metrics;
 
-    RedemptionController(RedeemCouponHandler redeemCoupon) {
+    RedemptionController(RedeemCouponHandler redeemCoupon, RedemptionMetrics metrics) {
         this.redeemCoupon = redeemCoupon;
+        this.metrics = metrics;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -45,7 +47,9 @@ class RedemptionController {
         var command = new RedeemCouponCommand(
                 CouponCode.of(code), UserId.of(request.userId()), IpAddress.of(http.getRemoteAddr()));
 
-        return toResponse(redeemCoupon.handle(command));
+        RedemptionResult result = redeemCoupon.handle(command);
+        metrics.record(result);
+        return toResponse(result);
     }
 
     /// Exhaustive: adding a RedemptionResult variant breaks compilation here until it is mapped.

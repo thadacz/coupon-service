@@ -1,0 +1,43 @@
+### Ready-made requests for the IntelliJ HTTP Client (or VS Code REST Client).
+### The service trusts X-Forwarded-For from localhost, so it stands in for the client IP.
+### 212.77.98.9 is in Poland (wp.pl), 46.4.0.1 in Germany (Hetzner); check with https://api.country.is/<ip>.
+
+### Create a coupon (the code is case-insensitive and stored upper case)
+POST http://localhost:8080/api/v1/coupons
+Content-Type: application/json
+
+{"code": "wiosna", "maxUses": 2, "country": "PL"}
+
+### Read it back, in any case
+GET http://localhost:8080/api/v1/coupons/Wiosna
+
+### Redeem from Poland: 201
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-1"}
+
+### Same user again: 409 COUPON_ALREADY_REDEEMED
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-1"}
+
+### From Germany: 403 COUPON_COUNTRY_NOT_ALLOWED
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 46.4.0.1
+
+{"userId": "user-2"}
+
+### Unknown coupon: 404 COUPON_NOT_FOUND
+POST http://localhost:8080/api/v1/coupons/NIE-MA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-1"}
+
+### Metrics by outcome
+GET http://localhost:8080/actuator/prometheus

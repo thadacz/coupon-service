@@ -34,3 +34,33 @@ server:
   # networks). In production set it to the load balancer's addresses. Never trust the header
   # from arbitrary clients: anyone could claim a Polish IP.
   forward-headers-strategy: native
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      # Readiness deliberately ignores the geolocation provider: its outage must not
+      # take every pod out of the load balancer. It is handled per request (503).
+      group:
+        readiness:
+          include: readinessState, db
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+logging:
+  structured:
+    format:
+      # JSON lines in Elastic Common Schema, ready for an ELK pipeline.
+      console: ecs
