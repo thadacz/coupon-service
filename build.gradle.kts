@@ -95,3 +95,7 @@ tasks.jacocoTestCoverageVerification {
 tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
+
+tasks.bootJar {
+    archiveFileName = "app.jar"
+}

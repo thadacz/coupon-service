@@ -12,3 +12,17 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Full stack: docker compose --profile app up --build
+  # Without the profile only PostgreSQL starts, which is what ./gradlew bootRun uses.
+  app:
+    profiles: ["app"]
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/coupons
+      SPRING_PROFILES_ACTIVE: prod
+    ports:
+      - "8080:8080"
