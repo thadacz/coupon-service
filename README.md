@@ -41,7 +41,11 @@ architecture tests plus the coverage gate.
 | --- | --- | --- |
 | `POST /api/v1/coupons` | `{"code", "maxUses", "country"}` | `201` with `Location` and the coupon |
 | `GET /api/v1/coupons/{code}` | | `200` with the coupon |
-| `POST /api/v1/coupons/{code}/redemptions` | `{"userId"}` | `201` with `couponCode`, `userId`, `redeemedAt` |
+| `POST /api/v1/coupons/{code}/redemptions` | `{"userId"}` | `201` with `Location`, `couponCode`, `userId`, `redeemedAt` |
+| `GET /api/v1/coupons/{code}/redemptions/{userId}` | | `200` with the redemption |
+
+The `GET` on a redemption is there for a client that lost the answer to its `POST` (timeout,
+dropped connection): it checks whether the redemption went through instead of retrying blindly.
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details with an `errorCode`
 member. Clients should branch on `errorCode`, since two problems can share a status.
@@ -52,6 +56,7 @@ member. Clients should branch on `errorCode`, since two problems can share a sta
 | Body is not valid JSON | 400 | `MALFORMED_REQUEST` |
 | Code already exists, in any letter case | 409 | `COUPON_CODE_ALREADY_EXISTS` |
 | Coupon does not exist | 404 | `COUPON_NOT_FOUND` |
+| Coupon exists, but this user has not redeemed it (`GET` on a redemption) | 404 | `REDEMPTION_NOT_FOUND` |
 | Client country differs from the coupon's, or cannot be determined | 403 | `COUPON_COUNTRY_NOT_ALLOWED` |
 | Usage limit reached | 409 | `COUPON_USAGE_LIMIT_REACHED` |
 | This user already redeemed this coupon | 409 | `COUPON_ALREADY_REDEEMED` |
@@ -256,8 +261,6 @@ overload. Rejected: WebFlux with R2DBC, more complex for no gain here.
 - Validity dates, coupon deactivation, and releasing a use on order cancellation (saga step).
 - JVM AOT cache in the image (Java 25) for faster scale-out; the training run needs the database
   and Flyway disabled.
-- `GET /api/v1/coupons/{code}/redemptions/{userId}`, so a client can check the outcome after a timeout.
-
 ## How AI was used
 
 <!-- Describe this in your own words: which tools, for what, and how you verified the result. -->

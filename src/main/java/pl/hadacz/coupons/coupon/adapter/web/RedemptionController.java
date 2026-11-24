@@ -7,12 +7,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import pl.hadacz.coupons.coupon.application.CouponQueries;
 import pl.hadacz.coupons.coupon.application.RedeemCouponCommand;
 import pl.hadacz.coupons.coupon.application.RedeemCouponHandler;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
@@ -33,10 +36,12 @@ class RedemptionController {
     private static final String RETRY_AFTER_SECONDS = "5";
 
     private final RedeemCouponHandler redeemCoupon;
+    private final CouponQueries queries;
     private final RedemptionMetrics metrics;
 
-    RedemptionController(RedeemCouponHandler redeemCoupon, RedemptionMetrics metrics) {
+    RedemptionController(RedeemCouponHandler redeemCoupon, CouponQueries queries, RedemptionMetrics metrics) {
         this.redeemCoupon = redeemCoupon;
+        this.queries = queries;
         this.metrics = metrics;
     }
 
@@ -52,10 +57,28 @@ class RedemptionController {
         return toResponse(result);
     }
 
+    /// The outcome of an earlier redemption, for a client that did not get the answer to its POST.
+    /// Two different 404s: the coupon does not exist, or this user has not redeemed it.
+    @GetMapping("/{userId}")
+    ResponseEntity<Object> get(@PathVariable String code, @PathVariable String userId) {
+        CouponCode couponCode = CouponCode.of(code);
+        UserId user = UserId.of(userId);
+        return queries.findRedemption(couponCode, user)
+                .<ResponseEntity<Object>>map(redemption -> ResponseEntity.ok(RedemptionResponse.from(redemption)))
+                .orElseGet(() -> queries.findByCode(couponCode).isPresent()
+                        ? Problems.response(HttpStatus.NOT_FOUND, ErrorCode.REDEMPTION_NOT_FOUND,
+                                "User '%s' has not redeemed coupon '%s'.".formatted(user, couponCode))
+                        : Problems.response(HttpStatus.NOT_FOUND, ErrorCode.COUPON_NOT_FOUND,
+                                "Coupon '%s' does not exist.".formatted(couponCode)));
+    }
+
     /// Exhaustive: adding a RedemptionResult variant breaks compilation here until it is mapped.
     private static ResponseEntity<Object> toResponse(RedemptionResult result) {
         return switch (result) {
-            case Redeemed redeemed -> ResponseEntity.status(HttpStatus.CREATED)
+            case Redeemed redeemed -> ResponseEntity
+                    .created(ServletUriComponentsBuilder.fromCurrentContextPath()
+                            .path("/api/v1/coupons/{code}/redemptions/{userId}")
+                            .buildAndExpand(redeemed.code().value(), redeemed.userId().value()).toUri())
                     .body(RedemptionResponse.from(redeemed));
             case CouponNotFound(var code) -> Problems.response(HttpStatus.NOT_FOUND,
                     ErrorCode.COUPON_NOT_FOUND, "Coupon '%s' does not exist.".formatted(code));

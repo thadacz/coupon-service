@@ -14,6 +14,7 @@ enum ErrorCode {
     COUPON_COUNTRY_NOT_ALLOWED("Coupon not available in your country"),
     COUPON_USAGE_LIMIT_REACHED("Coupon usage limit reached"),
     COUPON_ALREADY_REDEEMED("Coupon already redeemed by this user"),
+    REDEMPTION_NOT_FOUND("Coupon not redeemed by this user"),
     GEOLOCATION_UNAVAILABLE("Country of the request could not be verified");
 
     private final String title;

@@ -25,6 +25,9 @@ X-Forwarded-For: 212.77.98.9
 
 {"userId": "user-1"}
 
+### Did user-1's redemption go through? 200 (404 REDEMPTION_NOT_FOUND for a user who has not redeemed it)
+GET http://localhost:8080/api/v1/coupons/WIOSNA/redemptions/user-1
+
 ### From Germany: 403 COUPON_COUNTRY_NOT_ALLOWED
 POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
 Content-Type: application/json

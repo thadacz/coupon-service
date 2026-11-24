@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,11 +18,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
+import pl.hadacz.coupons.coupon.application.CouponQueries;
 import pl.hadacz.coupons.coupon.application.RedeemCouponCommand;
 import pl.hadacz.coupons.coupon.application.RedeemCouponHandler;
 import pl.hadacz.coupons.coupon.domain.CountryCode;
+import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
 import pl.hadacz.coupons.coupon.domain.IpAddress;
+import pl.hadacz.coupons.coupon.domain.Redemption;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
@@ -36,6 +40,7 @@ class RedemptionControllerTest {
 
     private static final CouponCode WIOSNA = CouponCode.of("WIOSNA");
     private static final UserId USER = UserId.of("user-42");
+    private static final Instant NOW = Instant.parse("2026-11-24T10:00:00Z");
 
     @Autowired
     MockMvcTester mvc;
@@ -44,16 +49,19 @@ class RedemptionControllerTest {
     RedeemCouponHandler redeemCoupon;
 
     @MockitoBean
+    CouponQueries queries;
+
+    @MockitoBean
     RedemptionMetrics metrics;
 
     @Test
     @DisplayName("201 with the redemption, built from the normalized code and the connection's IP")
     void redeemed() {
-        given(redeemCoupon.handle(any()))
-                .willReturn(new Redeemed(WIOSNA, USER, Instant.parse("2026-11-24T10:00:00Z")));
+        given(redeemCoupon.handle(any())).willReturn(new Redeemed(WIOSNA, USER, NOW));
 
         assertThat(redeem("wiosna", "83.0.0.1"))
                 .hasStatus(HttpStatus.CREATED)
+                .hasHeader("Location", "http://localhost/api/v1/coupons/WIOSNA/redemptions/user-42")
                 .bodyJson()
                 .isLenientlyEqualTo("""
                         {"couponCode": "WIOSNA", "userId": "user-42", "redeemedAt": "2026-11-24T10:00:00Z"}
@@ -112,6 +120,37 @@ class RedemptionControllerTest {
                 .bodyJson()
                 .extractingPath("$.errors[0].field")
                 .isEqualTo("userId");
+    }
+
+    @Test
+    @DisplayName("GET returns an earlier redemption, whatever the case of the code")
+    void getsRedemption() {
+        given(queries.findRedemption(WIOSNA, USER)).willReturn(Optional.of(new Redemption(WIOSNA, USER, NOW)));
+
+        assertThat(mvc.get().uri("/api/v1/coupons/wiosna/redemptions/user-42"))
+                .hasStatusOk()
+                .bodyJson()
+                .isLenientlyEqualTo("""
+                        {"couponCode": "WIOSNA", "userId": "user-42", "redeemedAt": "2026-11-24T10:00:00Z"}
+                        """);
+    }
+
+    @Test
+    @DisplayName("GET tells a missing redemption apart from a missing coupon")
+    void getsMissingRedemption() {
+        given(queries.findRedemption(any(), any())).willReturn(Optional.empty());
+        given(queries.findByCode(WIOSNA)).willReturn(Optional.of(Coupon.create(WIOSNA, CountryCode.of("PL"), 10, NOW)));
+
+        assertThat(mvc.get().uri("/api/v1/coupons/WIOSNA/redemptions/user-42"))
+                .hasStatus(HttpStatus.NOT_FOUND)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("REDEMPTION_NOT_FOUND");
+        assertThat(mvc.get().uri("/api/v1/coupons/NIE-MA/redemptions/user-42"))
+                .hasStatus(HttpStatus.NOT_FOUND)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("COUPON_NOT_FOUND");
     }
 
     private void expectProblem(RedemptionResult result, HttpStatus status, String errorCode) {

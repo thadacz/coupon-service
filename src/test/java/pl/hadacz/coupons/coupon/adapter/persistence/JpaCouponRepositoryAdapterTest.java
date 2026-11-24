@@ -14,6 +14,8 @@ import pl.hadacz.coupons.coupon.application.port.CouponRepository;
 import pl.hadacz.coupons.coupon.domain.CountryCode;
 import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.Redemption;
+import pl.hadacz.coupons.coupon.domain.UserId;
 import pl.hadacz.coupons.support.IntegrationTest;
 
 @IntegrationTest
@@ -58,5 +60,18 @@ class JpaCouponRepositoryAdapterTest {
     @DisplayName("returns nothing for an unknown code")
     void unknownCode() {
         assertThat(coupons.findByCode(CouponCode.of("NIE-MA"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("finds a redemption with its exact time, and only for the user who made it")
+    void findsRedemption() {
+        CouponCode code = CouponCode.of("WIOSNA");
+        coupons.tryCreate(Coupon.create(code, CountryCode.of("PL"), 10, CREATED_AT));
+        coupons.redeem(code, UserId.of("user-1"), CREATED_AT);
+
+        assertThat(coupons.findRedemption(code, UserId.of("user-1")))
+                .contains(new Redemption(code, UserId.of("user-1"), CREATED_AT));
+        assertThat(coupons.findRedemption(code, UserId.of("user-2"))).isEmpty();
+        assertThat(coupons.findRedemption(CouponCode.of("NIE-MA"), UserId.of("user-1"))).isEmpty();
     }
 }

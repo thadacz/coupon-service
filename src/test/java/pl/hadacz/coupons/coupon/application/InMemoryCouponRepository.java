@@ -1,16 +1,16 @@
 package pl.hadacz.coupons.coupon.application;
 
 import java.time.Instant;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import pl.hadacz.coupons.coupon.application.port.CouponRepository;
 import pl.hadacz.coupons.coupon.application.port.RedemptionOutcome;
 import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.Redemption;
 import pl.hadacz.coupons.coupon.domain.UserId;
 
 /// Fake used by the use-case tests. State-based assertions read better than mock verifications,
@@ -18,7 +18,7 @@ import pl.hadacz.coupons.coupon.domain.UserId;
 class InMemoryCouponRepository implements CouponRepository {
 
     private final Map<CouponCode, Coupon> coupons = new ConcurrentHashMap<>();
-    private final Set<String> redemptions = new HashSet<>();
+    private final Map<String, Redemption> redemptions = new HashMap<>();
 
     @Override
     public boolean tryCreate(Coupon coupon) {
@@ -37,19 +37,28 @@ class InMemoryCouponRepository implements CouponRepository {
         if (coupon == null) {
             throw new IllegalStateException("Coupon " + code + " does not exist");
         }
-        if (!redemptions.add(code.value() + "|" + userId.value())) {
+        if (redemptions.containsKey(key(code, userId))) {
             return RedemptionOutcome.ALREADY_REDEEMED;
         }
         if (coupon.isExhausted()) {
-            redemptions.remove(code.value() + "|" + userId.value());
             return RedemptionOutcome.LIMIT_REACHED;
         }
+        redemptions.put(key(code, userId), new Redemption(code, userId, redeemedAt));
         coupons.put(code, new Coupon(coupon.code(), coupon.country(), coupon.maxUses(),
                 coupon.currentUses() + 1, coupon.createdAt()));
         return RedemptionOutcome.REDEEMED;
     }
 
+    @Override
+    public synchronized Optional<Redemption> findRedemption(CouponCode code, UserId userId) {
+        return Optional.ofNullable(redemptions.get(key(code, userId)));
+    }
+
     void save(Coupon coupon) {
         coupons.put(coupon.code(), coupon);
+    }
+
+    private static String key(CouponCode code, UserId userId) {
+        return code.value() + "|" + userId.value();
     }
 }

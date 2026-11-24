@@ -1,10 +1,12 @@
 package pl.hadacz.coupons.coupon.adapter.persistence;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -12,6 +14,7 @@ import pl.hadacz.coupons.coupon.application.port.CouponRepository;
 import pl.hadacz.coupons.coupon.application.port.RedemptionOutcome;
 import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.Redemption;
 import pl.hadacz.coupons.coupon.domain.UserId;
 
 @Repository
@@ -21,10 +24,12 @@ class JpaCouponRepositoryAdapter implements CouponRepository {
 
     private final CouponJpaRepository jpa;
     private final TransactionTemplate transaction;
+    private final JdbcClient jdbc;
 
-    JpaCouponRepositoryAdapter(CouponJpaRepository jpa, TransactionTemplate transaction) {
+    JpaCouponRepositoryAdapter(CouponJpaRepository jpa, TransactionTemplate transaction, JdbcClient jdbc) {
         this.jpa = jpa;
         this.transaction = transaction;
+        this.jdbc = jdbc;
     }
 
     @Override
@@ -67,6 +72,22 @@ class JpaCouponRepositoryAdapter implements CouponRepository {
             throw new IllegalStateException("Redemption transaction returned no outcome");
         }
         return outcome;
+    }
+
+    /// Plain SQL: redemptions have no entity, and the unique (coupon_id, user_id) index serves the lookup.
+    @Override
+    public Optional<Redemption> findRedemption(CouponCode code, UserId userId) {
+        return jdbc.sql("""
+                        SELECT r.redeemed_at
+                          FROM coupon_redemptions r
+                          JOIN coupons c ON c.id = r.coupon_id
+                         WHERE c.code = :code AND r.user_id = :userId
+                        """)
+                .param("code", code.value())
+                .param("userId", userId.value())
+                .query((rs, row) -> new Redemption(code, userId,
+                        rs.getObject("redeemed_at", OffsetDateTime.class).toInstant()))
+                .optional();
     }
 
     private static boolean violates(Throwable error, String constraint) {

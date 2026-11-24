@@ -59,11 +59,19 @@ class CouponApiEndToEndTest {
 
         redeem("WIOSNA", "user-1", POLISH_IP)
                 .expectStatus().isCreated()
+                .expectHeader().valueMatches("Location", ".*/api/v1/coupons/WIOSNA/redemptions/user-1")
                 .expectBody().jsonPath("$.couponCode").isEqualTo("WIOSNA");
 
         client.get().uri("/api/v1/coupons/Wiosna").exchange()
                 .expectStatus().isOk()
                 .expectBody().jsonPath("$.currentUses").isEqualTo(1);
+
+        client.get().uri("/api/v1/coupons/wiosna/redemptions/user-1").exchange()
+                .expectStatus().isOk()
+                .expectBody().jsonPath("$.userId").isEqualTo("user-1");
+        client.get().uri("/api/v1/coupons/WIOSNA/redemptions/user-2").exchange()
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.errorCode").isEqualTo("REDEMPTION_NOT_FOUND");
 
         redeem("wiosna", "user-1", POLISH_IP)
                 .expectStatus().isEqualTo(409)
