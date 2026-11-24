@@ -54,6 +54,17 @@ class SchemaConstraintsTest {
     }
 
     @Test
+    @DisplayName("rejects a validity period that does not end after it starts")
+    void rejectsInvertedValidityPeriod() {
+        assertThatThrownBy(() -> jdbc.sql("""
+                        INSERT INTO coupons (code, country_code, max_uses, created_at, valid_from, valid_until)
+                        VALUES ('ZIMA', 'PL', 10, now(), '2027-01-01T00:00:00Z', '2026-12-01T00:00:00Z')
+                        """).update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_coupons_validity_period");
+    }
+
+    @Test
     @DisplayName("rejects a second redemption of the same coupon by the same user")
     void rejectsDuplicateRedemption() {
         insertCoupon("JESIEN", "PL", 10, 0);

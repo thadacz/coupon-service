@@ -3,6 +3,7 @@ package pl.hadacz.coupons.coupon.adapter.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -17,12 +18,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 import pl.hadacz.coupons.coupon.application.CouponQueries;
+import pl.hadacz.coupons.coupon.application.CreateCouponCommand;
 import pl.hadacz.coupons.coupon.application.CreateCouponHandler;
 import pl.hadacz.coupons.coupon.application.CreateCouponResult.CodeAlreadyExists;
 import pl.hadacz.coupons.coupon.application.CreateCouponResult.Created;
 import pl.hadacz.coupons.coupon.domain.CountryCode;
 import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 @WebMvcTest(CouponController.class)
 class CouponControllerTest {
@@ -55,6 +58,45 @@ class CouponControllerTest {
                 .isLenientlyEqualTo("""
                         {"code": "WIOSNA", "country": "PL", "maxUses": 100, "currentUses": 0,
                          "createdAt": "2026-11-24T10:00:00Z"}
+                        """);
+    }
+
+    @Test
+    @DisplayName("POST /coupons passes the validity period to the use case and returns it")
+    void createsCouponWithValidityPeriod() {
+        var validity = new ValidityPeriod(
+                Instant.parse("2026-12-01T00:00:00Z"), Instant.parse("2027-01-01T00:00:00Z"));
+        given(createCoupon.handle(any())).willReturn(new Created(Coupon.create(
+                CouponCode.of("ZIMA"), CountryCode.of("PL"), 10, validity, Instant.parse("2026-11-24T10:00:00Z"))));
+
+        assertThat(mvc.post().uri("/api/v1/coupons")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"code": "zima", "maxUses": 10, "country": "PL",
+                         "validFrom": "2026-12-01T00:00:00Z", "validUntil": "2027-01-01T00:00:00Z"}
+                        """))
+                .hasStatus(HttpStatus.CREATED)
+                .bodyJson()
+                .isLenientlyEqualTo("""
+                        {"validFrom": "2026-12-01T00:00:00Z", "validUntil": "2027-01-01T00:00:00Z"}
+                        """);
+        then(createCoupon).should().handle(
+                new CreateCouponCommand(CouponCode.of("ZIMA"), CountryCode.of("PL"), 10, validity));
+    }
+
+    @Test
+    @DisplayName("POST /coupons rejects a validity period that ends before it starts")
+    void rejectsInvertedValidityPeriod() {
+        assertThat(mvc.post().uri("/api/v1/coupons")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"code": "ZIMA", "maxUses": 10, "country": "PL",
+                         "validFrom": "2027-01-01T00:00:00Z", "validUntil": "2026-12-01T00:00:00Z"}
+                        """))
+                .hasStatus(HttpStatus.BAD_REQUEST)
+                .bodyJson()
+                .isLenientlyEqualTo("""
+                        {"errorCode": "VALIDATION_FAILED", "errors": [{"field": "validUntil"}]}
                         """);
     }
 

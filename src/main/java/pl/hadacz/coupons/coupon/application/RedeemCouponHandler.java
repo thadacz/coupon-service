@@ -16,19 +16,26 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 /// Redeems a coupon. Checks run from cheapest to most expensive:
 ///
-/// 1. read the coupon (no lock, no transaction; code, country and limit never change),
-/// 2. fast path: a snapshot that says "exhausted" is final, because the counter only grows,
-/// 3. resolve the client's country: a network call, so it happens before any transaction,
-/// 4. atomic redemption in the database, which is the only authoritative check.
+/// 1. read the coupon (no lock, no transaction; code, country, limit and dates never change),
+/// 2. validity period, against the clock,
+/// 3. fast path: a snapshot that says "exhausted" is final, because the counter only grows,
+/// 4. resolve the client's country: a network call, so it happens before any transaction,
+/// 5. atomic redemption in the database, which is the only authoritative check.
 ///
-/// Consequence worth knowing: a user who already redeemed an exhausted coupon gets
-/// "limit reached", not "already redeemed". Both mean "you cannot use it", and the
+/// The clock is read once: the instant checked against the validity period is the one stored
+/// as `redeemed_at`, so a recorded redemption never lies outside the coupon's period.
+///
+/// Consequence worth knowing: a user who already redeemed an exhausted or expired coupon gets
+/// "limit reached" or "expired", not "already redeemed". All mean "you cannot use it", and the
 /// order saves a call to the geolocation provider.
 public final class RedeemCouponHandler {
 
@@ -48,6 +55,14 @@ public final class RedeemCouponHandler {
             return new CouponNotFound(command.code());
         }
         Coupon coupon = found.get();
+        Instant redeemedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        ValidityPeriod validity = coupon.validity();
+        if (validity.hasNotStartedAt(redeemedAt)) {
+            return new NotYetValid(coupon.code(), validity.validFrom());
+        }
+        if (validity.hasEndedBy(redeemedAt)) {
+            return new Expired(coupon.code(), validity.validUntil());
+        }
         if (coupon.isExhausted()) {
             return new UsageLimitReached(coupon.code(), coupon.maxUses());
         }
@@ -57,7 +72,6 @@ public final class RedeemCouponHandler {
             return countryRejection.get();
         }
 
-        Instant redeemedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         return switch (coupons.redeem(coupon.code(), command.userId(), redeemedAt)) {
             case REDEEMED -> new Redeemed(coupon.code(), command.userId(), redeemedAt);
             case ALREADY_REDEEMED -> new AlreadyRedeemed(coupon.code(), command.userId());

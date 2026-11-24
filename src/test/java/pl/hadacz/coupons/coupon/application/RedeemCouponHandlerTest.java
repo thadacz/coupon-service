@@ -23,10 +23,13 @@ import pl.hadacz.coupons.coupon.domain.IpAddress;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
 import pl.hadacz.coupons.coupon.domain.UserId;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 class RedeemCouponHandlerTest {
 
@@ -63,9 +66,36 @@ class RedeemCouponHandlerTest {
     }
 
     @Test
+    @DisplayName("rejects a coupon before its validity starts, without asking for the country")
+    void notYetValid() {
+        Instant start = NOW.plusSeconds(1);
+        coupons.save(Coupon.create(WIOSNA, PL, 10, new ValidityPeriod(start, null), NOW.minusSeconds(60)));
+
+        assertThat(handler.handle(command(USER))).isEqualTo(new NotYetValid(WIOSNA, start));
+        assertThat(countries.calls).hasValue(0);
+    }
+
+    @Test
+    @DisplayName("rejects a coupon from the instant its validity ends, without asking for the country")
+    void expired() {
+        coupons.save(new Coupon(WIOSNA, PL, 10, 0, new ValidityPeriod(null, NOW), NOW.minusSeconds(60)));
+
+        assertThat(handler.handle(command(USER))).isEqualTo(new Expired(WIOSNA, NOW));
+        assertThat(countries.calls).hasValue(0);
+    }
+
+    @Test
+    @DisplayName("redeems from the very instant the validity starts")
+    void validFromStart() {
+        coupons.save(Coupon.create(WIOSNA, PL, 10, new ValidityPeriod(NOW, NOW.plusSeconds(1)), NOW.minusSeconds(60)));
+
+        assertThat(handler.handle(command(USER))).isEqualTo(new Redeemed(WIOSNA, USER, NOW));
+    }
+
+    @Test
     @DisplayName("rejects an exhausted coupon without asking for the country")
     void exhaustedFastPath() {
-        coupons.save(new Coupon(WIOSNA, PL, 2, 2, NOW));
+        coupons.save(new Coupon(WIOSNA, PL, 2, 2, ValidityPeriod.ALWAYS, NOW));
 
         assertThat(handler.handle(command(USER))).isEqualTo(new UsageLimitReached(WIOSNA, 2));
         assertThat(countries.calls).hasValue(0);

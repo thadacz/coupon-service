@@ -30,7 +30,9 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
 import pl.hadacz.coupons.coupon.domain.UserId;
@@ -74,6 +76,13 @@ class RedemptionControllerTest {
     @DisplayName("404 COUPON_NOT_FOUND")
     void notFound() {
         expectProblem(new CouponNotFound(WIOSNA), HttpStatus.NOT_FOUND, "COUPON_NOT_FOUND");
+    }
+
+    @Test
+    @DisplayName("409 COUPON_NOT_YET_VALID and COUPON_EXPIRED")
+    void outsideValidityPeriod() {
+        expectProblem(new NotYetValid(WIOSNA, NOW), HttpStatus.CONFLICT, "COUPON_NOT_YET_VALID");
+        expectProblem(new Expired(WIOSNA, NOW), HttpStatus.CONFLICT, "COUPON_EXPIRED");
     }
 
     @Test

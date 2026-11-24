@@ -100,6 +100,21 @@ class CouponApiEndToEndTest {
     }
 
     @Test
+    @DisplayName("a coupon whose validity starts in the future cannot be redeemed yet")
+    void notYetValid() {
+        client.post().uri("/api/v1/coupons")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("code", "ZIMA", "maxUses", 10, "country", "PL", "validFrom", "2999-01-01T00:00:00Z"))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody().jsonPath("$.validFrom").isEqualTo("2999-01-01T00:00:00Z");
+
+        redeem("ZIMA", "user-1", POLISH_IP)
+                .expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.errorCode").isEqualTo("COUPON_NOT_YET_VALID");
+    }
+
+    @Test
     @DisplayName("without X-Forwarded-For the client is localhost, whose country is unknown")
     void loopbackClient() {
         createCoupon("WIOSNA", 10, "PL");

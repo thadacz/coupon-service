@@ -17,6 +17,12 @@ public sealed interface RedemptionResult {
     record CouponNotFound(CouponCode code) implements RedemptionResult {
     }
 
+    record NotYetValid(CouponCode code, Instant validFrom) implements RedemptionResult {
+    }
+
+    record Expired(CouponCode code, Instant validUntil) implements RedemptionResult {
+    }
+
     record UsageLimitReached(CouponCode code, int maxUses) implements RedemptionResult {
     }
 

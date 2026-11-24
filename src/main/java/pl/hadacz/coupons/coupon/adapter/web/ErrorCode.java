@@ -12,6 +12,8 @@ enum ErrorCode {
     COUPON_CODE_ALREADY_EXISTS("Coupon code already exists"),
     COUPON_NOT_FOUND("Coupon not found"),
     COUPON_COUNTRY_NOT_ALLOWED("Coupon not available in your country"),
+    COUPON_NOT_YET_VALID("Coupon not valid yet"),
+    COUPON_EXPIRED("Coupon expired"),
     COUPON_USAGE_LIMIT_REACHED("Coupon usage limit reached"),
     COUPON_ALREADY_REDEEMED("Coupon already redeemed by this user"),
     REDEMPTION_NOT_FOUND("Coupon not redeemed by this user"),

@@ -20,6 +20,7 @@ import pl.hadacz.coupons.coupon.application.CreateCouponResult.CodeAlreadyExists
 import pl.hadacz.coupons.coupon.application.CreateCouponResult.Created;
 import pl.hadacz.coupons.coupon.domain.CountryCode;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 @RestController
 @RequestMapping(path = "/api/v1/coupons", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -36,7 +37,8 @@ class CouponController {
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Object> create(@Valid @RequestBody CreateCouponRequest request) {
         var command = new CreateCouponCommand(
-                CouponCode.of(request.code()), CountryCode.of(request.country()), request.maxUses());
+                CouponCode.of(request.code()), CountryCode.of(request.country()), request.maxUses(),
+                new ValidityPeriod(request.validFrom(), request.validUntil()));
 
         return switch (createCoupon.handle(command)) {
             case Created(var coupon) -> ResponseEntity

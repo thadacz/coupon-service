@@ -36,15 +36,17 @@ class CouponTest {
     @Test
     @DisplayName("is exhausted when the counter reaches the limit")
     void exhaustedAtLimit() {
-        assertThat(new Coupon(CODE, PL, 2, 1, NOW).isExhausted()).isFalse();
-        assertThat(new Coupon(CODE, PL, 2, 2, NOW).isExhausted()).isTrue();
+        assertThat(new Coupon(CODE, PL, 2, 1, ValidityPeriod.ALWAYS, NOW).isExhausted()).isFalse();
+        assertThat(new Coupon(CODE, PL, 2, 2, ValidityPeriod.ALWAYS, NOW).isExhausted()).isTrue();
     }
 
     @Test
     @DisplayName("never holds a counter outside 0..limit")
     void counterWithinLimit() {
-        assertThatThrownBy(() -> new Coupon(CODE, PL, 2, 3, NOW)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new Coupon(CODE, PL, 2, -1, NOW)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Coupon(CODE, PL, 2, 3, ValidityPeriod.ALWAYS, NOW))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Coupon(CODE, PL, 2, -1, ValidityPeriod.ALWAYS, NOW))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -54,5 +56,15 @@ class CouponTest {
 
         assertThat(coupon.isAvailableIn(CountryCode.of("PL"))).isTrue();
         assertThat(coupon.isAvailableIn(CountryCode.of("DE"))).isFalse();
+    }
+
+    @Test
+    @DisplayName("cannot be created already expired, but a stored one may have expired since")
+    void notCreatedExpired() {
+        ValidityPeriod endedNow = new ValidityPeriod(null, NOW);
+
+        assertThatThrownBy(() -> Coupon.create(CODE, PL, 10, endedNow, NOW))
+                .isInstanceOf(DomainValidationException.class);
+        assertThat(new Coupon(CODE, PL, 10, 0, endedNow, NOW.minusSeconds(60)).validity()).isEqualTo(endedNow);
     }
 }

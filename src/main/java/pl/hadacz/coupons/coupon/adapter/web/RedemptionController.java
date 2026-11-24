@@ -24,7 +24,9 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
+import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
 import pl.hadacz.coupons.coupon.domain.UserId;
@@ -82,6 +84,11 @@ class RedemptionController {
                     .body(RedemptionResponse.from(redeemed));
             case CouponNotFound(var code) -> Problems.response(HttpStatus.NOT_FOUND,
                     ErrorCode.COUPON_NOT_FOUND, "Coupon '%s' does not exist.".formatted(code));
+            case NotYetValid(var code, var validFrom) -> Problems.response(HttpStatus.CONFLICT,
+                    ErrorCode.COUPON_NOT_YET_VALID,
+                    "Coupon '%s' can be redeemed from %s.".formatted(code, validFrom));
+            case Expired(var code, var validUntil) -> Problems.response(HttpStatus.CONFLICT,
+                    ErrorCode.COUPON_EXPIRED, "Coupon '%s' expired at %s.".formatted(code, validUntil));
             case UsageLimitReached(var code, var maxUses) -> Problems.response(HttpStatus.CONFLICT,
                     ErrorCode.COUPON_USAGE_LIMIT_REACHED,
                     "Coupon '%s' has reached its usage limit of %d.".formatted(code, maxUses));

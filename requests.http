@@ -8,6 +8,12 @@ Content-Type: application/json
 
 {"code": "wiosna", "maxUses": 2, "country": "PL"}
 
+### A coupon valid through December only (validUntil is exclusive); redeeming it earlier gives 409 COUPON_NOT_YET_VALID
+POST http://localhost:8080/api/v1/coupons
+Content-Type: application/json
+
+{"code": "zima", "maxUses": 100, "country": "PL", "validFrom": "2026-12-01T00:00:00Z", "validUntil": "2027-01-01T00:00:00Z"}
+
 ### Read it back, in any case
 GET http://localhost:8080/api/v1/coupons/Wiosna
 

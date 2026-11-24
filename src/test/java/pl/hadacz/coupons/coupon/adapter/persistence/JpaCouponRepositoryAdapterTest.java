@@ -16,6 +16,7 @@ import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
 import pl.hadacz.coupons.coupon.domain.Redemption;
 import pl.hadacz.coupons.coupon.domain.UserId;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 import pl.hadacz.coupons.support.IntegrationTest;
 
 @IntegrationTest
@@ -43,6 +44,21 @@ class JpaCouponRepositoryAdapterTest {
         assertThat(coupons.tryCreate(coupon)).isTrue();
 
         assertThat(coupons.findByCode(CouponCode.of("wiosna"))).contains(coupon);
+    }
+
+    @Test
+    @DisplayName("stores the validity period, with open ends as NULL")
+    void roundTripValidityPeriod() {
+        Coupon bounded = Coupon.create(CouponCode.of("ZIMA"), CountryCode.of("PL"), 10,
+                new ValidityPeriod(CREATED_AT, CREATED_AT.plusSeconds(3600)), CREATED_AT);
+        Coupon openEnded = Coupon.create(CouponCode.of("LATO"), CountryCode.of("PL"), 10,
+                new ValidityPeriod(CREATED_AT, null), CREATED_AT);
+
+        coupons.tryCreate(bounded);
+        coupons.tryCreate(openEnded);
+
+        assertThat(coupons.findByCode(CouponCode.of("ZIMA"))).contains(bounded);
+        assertThat(coupons.findByCode(CouponCode.of("LATO"))).contains(openEnded);
     }
 
     @Test

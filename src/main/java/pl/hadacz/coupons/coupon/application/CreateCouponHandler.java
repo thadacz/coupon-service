@@ -20,9 +20,10 @@ public final class CreateCouponHandler {
     }
 
     public CreateCouponResult handle(CreateCouponCommand command) {
-        // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
+        // PostgreSQL stores microseconds; truncating keeps the returned values equal to the stored ones.
         Instant createdAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
-        Coupon coupon = Coupon.create(command.code(), command.country(), command.maxUses(), createdAt);
+        Coupon coupon = Coupon.create(command.code(), command.country(), command.maxUses(),
+                command.validity().truncatedTo(ChronoUnit.MICROS), createdAt);
 
         return coupons.tryCreate(coupon)
                 ? new Created(coupon)

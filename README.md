@@ -39,10 +39,14 @@ architecture tests plus the coverage gate.
 
 | Method and path | Body | Success |
 | --- | --- | --- |
-| `POST /api/v1/coupons` | `{"code", "maxUses", "country"}` | `201` with `Location` and the coupon |
+| `POST /api/v1/coupons` | `{"code", "maxUses", "country", "validFrom"?, "validUntil"?}` | `201` with `Location` and the coupon |
 | `GET /api/v1/coupons/{code}` | | `200` with the coupon |
 | `POST /api/v1/coupons/{code}/redemptions` | `{"userId"}` | `201` with `Location`, `couponCode`, `userId`, `redeemedAt` |
 | `GET /api/v1/coupons/{code}/redemptions/{userId}` | | `200` with the redemption |
+
+`validFrom` and `validUntil` are optional ISO 8601 instants. The period is half-open: a coupon
+can be redeemed from `validFrom` (inclusive) until `validUntil` (exclusive), so
+`"validUntil": "2026-12-01T00:00:00Z"` means "through the whole of November". A missing side is open.
 
 The `GET` on a redemption is there for a client that lost the answer to its `POST` (timeout,
 dropped connection): it checks whether the redemption went through instead of retrying blindly.
@@ -52,12 +56,14 @@ member. Clients should branch on `errorCode`, since two problems can share a sta
 
 | Situation | Status | `errorCode` |
 | --- | --- | --- |
-| Missing field, bad code or country format, `maxUses` < 1 | 400 | `VALIDATION_FAILED` |
+| Missing field, bad code or country format, `maxUses` < 1, `validUntil` not after `validFrom` or not in the future | 400 | `VALIDATION_FAILED` |
 | Body is not valid JSON | 400 | `MALFORMED_REQUEST` |
 | Code already exists, in any letter case | 409 | `COUPON_CODE_ALREADY_EXISTS` |
 | Coupon does not exist | 404 | `COUPON_NOT_FOUND` |
 | Coupon exists, but this user has not redeemed it (`GET` on a redemption) | 404 | `REDEMPTION_NOT_FOUND` |
 | Client country differs from the coupon's, or cannot be determined | 403 | `COUPON_COUNTRY_NOT_ALLOWED` |
+| Before `validFrom` | 409 | `COUPON_NOT_YET_VALID` |
+| At or after `validUntil` | 409 | `COUPON_EXPIRED` |
 | Usage limit reached | 409 | `COUPON_USAGE_LIMIT_REACHED` |
 | This user already redeemed this coupon | 409 | `COUPON_ALREADY_REDEEMED` |
 | Geolocation provider unavailable | 503 + `Retry-After` | `GEOLOCATION_UNAVAILABLE` |
@@ -120,7 +126,9 @@ WHERE code = :code AND current_uses < max_uses;
 ```mermaid
 flowchart TB
     s1[Read coupon by code, no lock] -->|missing| e404[404 COUPON_NOT_FOUND]
-    s1 --> s2{Exhausted in the snapshot?}
+    s1 --> sv{Within the validity period now?}
+    sv -->|before / after| e409v[409 COUPON_NOT_YET_VALID / COUPON_EXPIRED]
+    sv --> s2{Exhausted in the snapshot?}
     s2 -->|yes| e409a[409 COUPON_USAGE_LIMIT_REACHED]
     s2 --> s3[Resolve country: cache, then api.country.is]
     s3 -->|provider down| e503[503 GEOLOCATION_UNAVAILABLE]
@@ -155,6 +163,9 @@ Why this is correct:
 - **Any number of instances.** The database is the only shared state.
 - **Safe fast path.** The exhausted check reads without locks. The counter only grows, so a snapshot that says
   "exhausted" is never wrong, and exhausted coupons do not cost a geolocation call.
+- **One clock reading.** The instant checked against the validity period is the one stored as
+  `redeemed_at`, so a recorded redemption never falls outside the coupon's period, even when the
+  request straddles `validUntil`.
 
 `CouponRedemptionConcurrencyTest` races 500 virtual threads for 50 uses (exactly 50 win) and one
 user against itself (exactly one wins) on a real PostgreSQL. Tests raise confidence; the guarantee
@@ -183,8 +194,8 @@ comes from the SQL above.
 
 | Level | Tools | What it checks |
 | --- | --- | --- |
-| Domain | JUnit 6, AssertJ | Code normalization (also under a Turkish default locale), ISO countries, IP classification, coupon invariants |
-| Use cases | In-memory fakes, fixed `Clock` | Every `RedemptionResult`, order of checks, no geolocation call for missing or exhausted coupons |
+| Domain | JUnit 6, AssertJ | Code normalization (also under a Turkish default locale), ISO countries, IP classification, coupon invariants, validity period bounds |
+| Use cases | In-memory fakes, fixed `Clock` | Every `RedemptionResult`, order of checks, no geolocation call for missing, expired or exhausted coupons |
 | Web | `@WebMvcTest`, `MockMvcTester` | Status codes, `Location`, problem details, validation |
 | Persistence | Testcontainers PostgreSQL 19 | Schema constraints, duplicate codes, the atomic redemption |
 | Concurrency | Virtual threads, start gate | Limit never exceeded, one use per user, racing creations of `WIOSNA`/`wiosna` |
@@ -248,19 +259,21 @@ overload. Rejected: WebFlux with R2DBC, more complex for no gain here.
 
 ## Assumptions
 
-- Code, country and limit of a coupon never change, and coupons are not deleted. This is what
-  makes the lock-free read and the fast path safe.
+- Code, country, limit and validity period of a coupon never change, and coupons are not deleted.
+  This is what makes the lock-free read and the fast path safe.
+- A coupon cannot be created already expired; one that expires later stays readable.
 - Uses are never given back. Releasing a use when an order is cancelled would need a compensating
   operation and would invalidate the "counter only grows" fast path.
-- A user who already redeemed an exhausted coupon gets `COUPON_USAGE_LIMIT_REACHED`, not
-  `COUPON_ALREADY_REDEEMED`: the fast path answers first. Both mean "you cannot use it".
+- A user who already redeemed an exhausted or expired coupon gets `COUPON_USAGE_LIMIT_REACHED` or
+  `COUPON_EXPIRED`, not `COUPON_ALREADY_REDEEMED`: the cheap checks answer first. All mean "you cannot use it".
 
 ## Next steps
 
 - `CouponRedeemed` events through a transactional outbox to Kafka, for CRM and analytics.
-- Validity dates, coupon deactivation, and releasing a use on order cancellation (saga step).
+- Coupon deactivation, and releasing a use on order cancellation (saga step).
 - JVM AOT cache in the image (Java 25) for faster scale-out; the training run needs the database
   and Flyway disabled.
+
 ## How AI was used
 
 <!-- Describe this in your own words: which tools, for what, and how you verified the result. -->

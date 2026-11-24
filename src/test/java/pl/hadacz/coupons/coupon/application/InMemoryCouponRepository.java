@@ -45,7 +45,7 @@ class InMemoryCouponRepository implements CouponRepository {
         }
         redemptions.put(key(code, userId), new Redemption(code, userId, redeemedAt));
         coupons.put(code, new Coupon(coupon.code(), coupon.country(), coupon.maxUses(),
-                coupon.currentUses() + 1, coupon.createdAt()));
+                coupon.currentUses() + 1, coupon.validity(), coupon.createdAt()));
         return RedemptionOutcome.REDEEMED;
     }
 

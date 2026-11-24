@@ -9,10 +9,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.UuidGenerator;
+import org.jspecify.annotations.Nullable;
 
 import pl.hadacz.coupons.coupon.domain.CountryCode;
 import pl.hadacz.coupons.coupon.domain.Coupon;
 import pl.hadacz.coupons.coupon.domain.CouponCode;
+import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 /// Persistence model of a coupon. The domain never sees it, nor the technical id.
 @Entity
@@ -38,6 +40,12 @@ class CouponEntity {
     @Column(name = "current_uses", nullable = false)
     private int currentUses;
 
+    @Column(name = "valid_from", updatable = false)
+    private @Nullable Instant validFrom;
+
+    @Column(name = "valid_until", updatable = false)
+    private @Nullable Instant validUntil;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -51,11 +59,14 @@ class CouponEntity {
         entity.countryCode = coupon.country().value();
         entity.maxUses = coupon.maxUses();
         entity.currentUses = coupon.currentUses();
+        entity.validFrom = coupon.validity().validFrom();
+        entity.validUntil = coupon.validity().validUntil();
         entity.createdAt = coupon.createdAt();
         return entity;
     }
 
     Coupon toDomain() {
-        return new Coupon(new CouponCode(code), new CountryCode(countryCode), maxUses, currentUses, createdAt);
+        return new Coupon(new CouponCode(code), new CountryCode(countryCode), maxUses, currentUses,
+                new ValidityPeriod(validFrom, validUntil), createdAt);
     }
 }
