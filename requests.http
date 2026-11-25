@@ -1,52 +1,116 @@
-### Ready-made requests for the IntelliJ HTTP Client (or VS Code REST Client).
-### The service trusts X-Forwarded-For from localhost, so it stands in for the client IP.
+### A walk through every requirement, in order, for the IntelliJ HTTP Client (or VS Code REST Client).
+### Run the steps top to bottom on an empty database (docker compose down -v, then ./gradlew bootRun):
+### each step's title says what to expect.
+###
+### The service trusts X-Forwarded-For from localhost, so the header stands in for the client IP.
 ### 212.77.98.9 is in Poland (wp.pl), 46.4.0.1 in Germany (Hetzner), according to the DB-IP database.
 
-### Create a coupon (the code is case-insensitive and stored upper case)
+### 1. Create a coupon with 2 uses for Poland: 201, Location, code stored as WIOSNA, currentUses 0, createdAt set
 POST http://localhost:8080/api/v1/coupons
 Content-Type: application/json
 
 {"code": "wiosna", "maxUses": 2, "country": "PL"}
 
-### A coupon valid through December only (validUntil is exclusive); redeeming it earlier gives 409 COUPON_NOT_YET_VALID
+### 2. The same code in another letter case: 409 COUPON_CODE_ALREADY_EXISTS
 POST http://localhost:8080/api/v1/coupons
 Content-Type: application/json
 
-{"code": "zima", "maxUses": 100, "country": "PL", "validFrom": "2026-12-01T00:00:00Z", "validUntil": "2027-01-01T00:00:00Z"}
+{"code": "Wiosna", "maxUses": 10, "country": "DE"}
 
-### Read it back, in any case
-GET http://localhost:8080/api/v1/coupons/Wiosna
+### 3. Read it back in any case: 200
+GET http://localhost:8080/api/v1/coupons/wIoSnA
 
-### Redeem from Poland: 201
+### 4. user-1 from Poland uses it: 201, Location points to the redemption
 POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
 Content-Type: application/json
 X-Forwarded-For: 212.77.98.9
 
 {"userId": "user-1"}
 
-### Same user again: 409 COUPON_ALREADY_REDEEMED
+### 5. user-1 again: 409 COUPON_ALREADY_REDEEMED
 POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
 Content-Type: application/json
 X-Forwarded-For: 212.77.98.9
 
 {"userId": "user-1"}
 
-### Did user-1's redemption go through? 200 (404 REDEMPTION_NOT_FOUND for a user who has not redeemed it)
-GET http://localhost:8080/api/v1/coupons/WIOSNA/redemptions/user-1
-
-### From Germany: 403 COUPON_COUNTRY_NOT_ALLOWED
+### 6. user-2 from Germany: 403 COUPON_COUNTRY_NOT_ALLOWED (no use is consumed)
 POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
 Content-Type: application/json
 X-Forwarded-For: 46.4.0.1
 
 {"userId": "user-2"}
 
-### Unknown coupon: 404 COUPON_NOT_FOUND
+### 7. No X-Forwarded-For: the client is localhost, whose country is unknown, so 403 COUPON_COUNTRY_NOT_ALLOWED
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+
+{"userId": "user-2"}
+
+### 8. user-3 from Poland takes the last use: 201
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-3"}
+
+### 9. user-4 after the limit: 409 COUPON_USAGE_LIMIT_REACHED
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-4"}
+
+### 10. user-3 retries after the limit: 409 COUPON_ALREADY_REDEEMED, the reason that actually applies
+POST http://localhost:8080/api/v1/coupons/WIOSNA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-3"}
+
+### 11. The counter: 200 with currentUses 2
+GET http://localhost:8080/api/v1/coupons/WIOSNA
+
+### 12. Unknown coupon: 404 COUPON_NOT_FOUND
 POST http://localhost:8080/api/v1/coupons/NIE-MA/redemptions
 Content-Type: application/json
 X-Forwarded-For: 212.77.98.9
 
 {"userId": "user-1"}
 
-### Metrics by outcome
+### 13. Did user-1's use go through? 200 with redeemedAt
+GET http://localhost:8080/api/v1/coupons/WIOSNA/redemptions/user-1
+
+### 14. A user who never used it: 404 REDEMPTION_NOT_FOUND
+GET http://localhost:8080/api/v1/coupons/WIOSNA/redemptions/user-9
+
+### 15. Invalid input: 400 VALIDATION_FAILED listing every bad field (code, maxUses, country)
+POST http://localhost:8080/api/v1/coupons
+Content-Type: application/json
+
+{"code": "", "maxUses": 0}
+
+### 16. Not JSON: 400 MALFORMED_REQUEST
+POST http://localhost:8080/api/v1/coupons
+Content-Type: application/json
+
+{not json
+
+### 17. A coupon valid only through December 2099 (validUntil is exclusive): 201
+POST http://localhost:8080/api/v1/coupons
+Content-Type: application/json
+
+{"code": "zima", "maxUses": 100, "country": "PL", "validFrom": "2099-12-01T00:00:00Z", "validUntil": "2100-01-01T00:00:00Z"}
+
+### 18. Using it now, before its period starts: 409 COUPON_NOT_YET_VALID
+POST http://localhost:8080/api/v1/coupons/ZIMA/redemptions
+Content-Type: application/json
+X-Forwarded-For: 212.77.98.9
+
+{"userId": "user-1"}
+
+### 19. Outcomes so far, by type: search for coupons_redemptions_total
 GET http://localhost:8080/actuator/prometheus
+
+### 20. Readiness: UP while the database is reachable
+GET http://localhost:8080/actuator/health/readiness
