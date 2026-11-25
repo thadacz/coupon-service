@@ -145,6 +145,11 @@ flowchart TB
     s6 -->|COMMIT| ok[201 Created]
 ```
 
+Every refusal before the transaction (dates, exhausted, country, provider down) first checks
+whether this user already redeemed the coupon, and if so answers `COUPON_ALREADY_REDEEMED`
+instead: a user who took the last use and retries is told that, not that the coupon ran out.
+The lookup is one indexed query on the refusal path only; a successful redemption does not pay for it.
+
 Why this is correct:
 
 - **No over-redemption.** A second `UPDATE` of the same row waits for the row lock; after the
@@ -264,8 +269,8 @@ overload. Rejected: WebFlux with R2DBC, more complex for no gain here.
 - A coupon cannot be created already expired; one that expires later stays readable.
 - Uses are never given back. Releasing a use when an order is cancelled would need a compensating
   operation and would invalidate the "counter only grows" fast path.
-- A user who already redeemed an exhausted or expired coupon gets `COUPON_USAGE_LIMIT_REACHED` or
-  `COUPON_EXPIRED`, not `COUPON_ALREADY_REDEEMED`: the cheap checks answer first. All mean "you cannot use it".
+- "Already redeemed" takes precedence over every other refusal for that user, because it is what
+  actually stops them. A user who has not redeemed gets the first refusal in the order shown above.
 
 ## Next steps
 

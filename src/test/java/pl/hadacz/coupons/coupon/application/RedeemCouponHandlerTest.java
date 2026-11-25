@@ -141,6 +141,29 @@ class RedeemCouponHandlerTest {
     }
 
     @Test
+    @DisplayName("tells the user who took the last use that they already redeemed it, not that it ran out")
+    void alreadyRedeemedRatherThanExhausted() {
+        coupons.save(Coupon.create(WIOSNA, PL, 1, NOW));
+        handler.handle(command(USER));
+
+        assertThat(handler.handle(command(USER))).isEqualTo(new AlreadyRedeemed(WIOSNA, USER));
+        assertThat(countries.calls).hasValue(1);
+    }
+
+    @Test
+    @DisplayName("tells a user who already redeemed so, also after the coupon expired or from another country")
+    void alreadyRedeemedWinsOverOtherRejections() {
+        coupons.save(Coupon.create(WIOSNA, PL, 10, NOW));
+        handler.handle(command(USER));
+
+        countries.answer = new Resolved(CountryCode.of("DE"));
+        assertThat(handler.handle(command(USER))).isEqualTo(new AlreadyRedeemed(WIOSNA, USER));
+
+        coupons.save(new Coupon(WIOSNA, PL, 10, 1, new ValidityPeriod(null, NOW), NOW.minusSeconds(60)));
+        assertThat(handler.handle(command(USER))).isEqualTo(new AlreadyRedeemed(WIOSNA, USER));
+    }
+
+    @Test
     @DisplayName("reports the limit when the last use goes to someone else first")
     void limitReachedInRepository() {
         coupons.save(Coupon.create(WIOSNA, PL, 1, NOW));

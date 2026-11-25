@@ -21,6 +21,7 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
+import pl.hadacz.coupons.coupon.domain.UserId;
 import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
 /// Redeems a coupon. Checks run from cheapest to most expensive:
@@ -34,9 +35,9 @@ import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 /// The clock is read once: the instant checked against the validity period is the one stored
 /// as `redeemed_at`, so a recorded redemption never lies outside the coupon's period.
 ///
-/// Consequence worth knowing: a user who already redeemed an exhausted or expired coupon gets
-/// "limit reached" or "expired", not "already redeemed". All mean "you cannot use it", and the
-/// order saves a call to the geolocation provider.
+/// A user who has already redeemed the coupon is always told so, even when the coupon has
+/// since run out, expired or is requested from another country: that is what actually stops
+/// them. The lookup runs only on the rejection path, so a successful redemption costs nothing extra.
 public final class RedeemCouponHandler {
 
     private final CouponRepository coupons;
@@ -56,20 +57,10 @@ public final class RedeemCouponHandler {
         }
         Coupon coupon = found.get();
         Instant redeemedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
-        ValidityPeriod validity = coupon.validity();
-        if (validity.hasNotStartedAt(redeemedAt)) {
-            return new NotYetValid(coupon.code(), validity.validFrom());
-        }
-        if (validity.hasEndedBy(redeemedAt)) {
-            return new Expired(coupon.code(), validity.validUntil());
-        }
-        if (coupon.isExhausted()) {
-            return new UsageLimitReached(coupon.code(), coupon.maxUses());
-        }
 
-        Optional<RedemptionResult> countryRejection = checkCountry(coupon, command.clientIp());
-        if (countryRejection.isPresent()) {
-            return countryRejection.get();
+        Optional<RedemptionResult> rejection = checkBeforeRedeeming(coupon, command.clientIp(), redeemedAt);
+        if (rejection.isPresent()) {
+            return previousRedemptionBy(coupon, command.userId()).orElse(rejection.get());
         }
 
         return switch (coupons.redeem(coupon.code(), command.userId(), redeemedAt)) {
@@ -77,6 +68,26 @@ public final class RedeemCouponHandler {
             case ALREADY_REDEEMED -> new AlreadyRedeemed(coupon.code(), command.userId());
             case LIMIT_REACHED -> new UsageLimitReached(coupon.code(), coupon.maxUses());
         };
+    }
+
+    /// Everything that can refuse a redemption before the transaction, cheapest first.
+    private Optional<RedemptionResult> checkBeforeRedeeming(Coupon coupon, IpAddress clientIp, Instant now) {
+        ValidityPeriod validity = coupon.validity();
+        if (validity.hasNotStartedAt(now)) {
+            return Optional.of(new NotYetValid(coupon.code(), validity.validFrom()));
+        }
+        if (validity.hasEndedBy(now)) {
+            return Optional.of(new Expired(coupon.code(), validity.validUntil()));
+        }
+        if (coupon.isExhausted()) {
+            return Optional.of(new UsageLimitReached(coupon.code(), coupon.maxUses()));
+        }
+        return checkCountry(coupon, clientIp);
+    }
+
+    private Optional<RedemptionResult> previousRedemptionBy(Coupon coupon, UserId userId) {
+        return coupons.findRedemption(coupon.code(), userId)
+                .map(redemption -> new AlreadyRedeemed(coupon.code(), userId));
     }
 
     /// Fail closed: when the country cannot be verified, the coupon is not redeemed.

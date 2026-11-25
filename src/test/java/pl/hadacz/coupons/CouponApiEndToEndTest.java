@@ -87,6 +87,10 @@ class CouponApiEndToEndTest {
         redeem("LATO", "user-2", POLISH_IP)
                 .expectStatus().isEqualTo(409)
                 .expectBody().jsonPath("$.errorCode").isEqualTo("COUPON_USAGE_LIMIT_REACHED");
+        // The user who took the last use is told they already redeemed it, not that it ran out.
+        redeem("LATO", "user-1", POLISH_IP)
+                .expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.errorCode").isEqualTo("COUPON_ALREADY_REDEEMED");
     }
 
     @Test
