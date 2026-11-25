@@ -27,7 +27,7 @@ public record IpAddress(InetAddress address) {
     }
 
     /// Whether the address can be geolocated. Loopback, private, link-local and similar ranges
-    /// say nothing about the client's country and are never sent to an external provider.
+    /// say nothing about the client's country, so they never get one.
     public boolean isPublic() {
         return !(address.isAnyLocalAddress()
                 || address.isLoopbackAddress()

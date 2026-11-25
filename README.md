@@ -70,8 +70,10 @@ curl -i -X POST localhost:8080/api/v1/coupons/WIOSNA/redemptions -H 'Content-Typ
      -H 'X-Forwarded-For: 212.77.98.9' -d '{"userId": "user-1"}'
 ```
 
-Every scenario as a ready-made request: [`requests.http`](requests.http).
-Swagger UI: <http://localhost:8080/swagger-ui.html>.
+**Try every requirement in two minutes:** [`requests.http`](requests.http) is a numbered walk
+through the whole task (20 requests for the IntelliJ HTTP Client), each titled with the answer to
+expect. Run it on an empty database (`docker compose down -v` first). Swagger UI:
+<http://localhost:8080/swagger-ui.html>.
 
 <a id="api"></a>
 ## API

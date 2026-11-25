@@ -22,7 +22,7 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
 import pl.hadacz.coupons.coupon.domain.UserId;
 import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
-/// Redeems a coupon. Every check that can refuse runs before the transaction:
+/// Redeems a coupon. Every check that can refuse runs before the transaction, in this order:
 ///
 /// 1. read the coupon (no lock, no transaction; code, country, limit and dates never change),
 /// 2. validity period, against the clock,

@@ -40,8 +40,8 @@ management:
     health:
       probes:
         enabled: true
-      # Readiness deliberately ignores the geolocation provider: its outage must not
-      # take every pod out of the load balancer. It is handled per request (503).
+      # Readiness checks the database: an instance that cannot reach it leaves the load
+      # balancer until it can. Liveness stays up, so the instance is not restarted for it.
       group:
         readiness:
           include: readinessState, db
