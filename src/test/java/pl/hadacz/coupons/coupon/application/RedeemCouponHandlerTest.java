@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 
 import pl.hadacz.coupons.coupon.application.port.CountryResolution;
 import pl.hadacz.coupons.coupon.application.port.CountryResolution.Resolved;
-import pl.hadacz.coupons.coupon.application.port.CountryResolution.Unavailable;
 import pl.hadacz.coupons.coupon.application.port.CountryResolution.Unresolvable;
 import pl.hadacz.coupons.coupon.application.port.CountryResolver;
 import pl.hadacz.coupons.coupon.domain.CountryCode;
@@ -24,7 +23,6 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
-import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
@@ -122,16 +120,6 @@ class RedeemCouponHandlerTest {
     }
 
     @Test
-    @DisplayName("fails closed when the geolocation provider is unavailable")
-    void providerUnavailable() {
-        coupons.save(Coupon.create(WIOSNA, PL, 10, NOW));
-        countries.answer = new Unavailable("timeout");
-
-        assertThat(handler.handle(command(USER))).isEqualTo(new GeolocationUnavailable(WIOSNA));
-        assertThat(coupons.findByCode(WIOSNA)).map(Coupon::currentUses).contains(0);
-    }
-
-    @Test
     @DisplayName("lets each user redeem a coupon only once")
     void onlyOncePerUser() {
         coupons.save(Coupon.create(WIOSNA, PL, 10, NOW));
@@ -179,7 +167,7 @@ class RedeemCouponHandlerTest {
     private static final class StubCountryResolver implements CountryResolver {
 
         private final AtomicInteger calls = new AtomicInteger();
-        private CountryResolution answer = new Unavailable("not configured");
+        private CountryResolution answer = new Unresolvable(Unresolvable.Reason.NO_DATA);
 
         @Override
         public CountryResolution resolve(IpAddress ip) {

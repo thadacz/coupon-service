@@ -6,7 +6,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import pl.hadacz.coupons.coupon.application.port.CountryResolution.Resolved;
-import pl.hadacz.coupons.coupon.application.port.CountryResolution.Unavailable;
 import pl.hadacz.coupons.coupon.application.port.CountryResolution.Unresolvable;
 import pl.hadacz.coupons.coupon.application.port.CountryResolver;
 import pl.hadacz.coupons.coupon.application.port.CouponRepository;
@@ -17,19 +16,18 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
-import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
 import pl.hadacz.coupons.coupon.domain.UserId;
 import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 
-/// Redeems a coupon. Checks run from cheapest to most expensive:
+/// Redeems a coupon. Every check that can refuse runs before the transaction:
 ///
 /// 1. read the coupon (no lock, no transaction; code, country, limit and dates never change),
 /// 2. validity period, against the clock,
 /// 3. fast path: a snapshot that says "exhausted" is final, because the counter only grows,
-/// 4. resolve the client's country: a network call, so it happens before any transaction,
+/// 4. the client's country, looked up in the local IP database,
 /// 5. atomic redemption in the database, which is the only authoritative check.
 ///
 /// The clock is read once: the instant checked against the validity period is the one stored
@@ -37,7 +35,7 @@ import pl.hadacz.coupons.coupon.domain.ValidityPeriod;
 ///
 /// A user who has already redeemed the coupon is always told so, even when the coupon has
 /// since run out, expired or is requested from another country: that is what actually stops
-/// them. The lookup runs only on the rejection path, so a successful redemption costs nothing extra.
+/// them. The lookup runs only on the refusal path, so a successful redemption costs nothing extra.
 public final class RedeemCouponHandler {
 
     private final CouponRepository coupons;
@@ -90,14 +88,13 @@ public final class RedeemCouponHandler {
                 .map(redemption -> new AlreadyRedeemed(coupon.code(), userId));
     }
 
-    /// Fail closed: when the country cannot be verified, the coupon is not redeemed.
+    /// Fail closed: when the country cannot be determined, the coupon is not redeemed.
     private Optional<RedemptionResult> checkCountry(Coupon coupon, IpAddress clientIp) {
         return switch (countries.resolve(clientIp)) {
             case Resolved(var country) when coupon.isAvailableIn(country) -> Optional.empty();
             case Resolved(var country) ->
                     Optional.of(new CountryNotAllowed(coupon.code(), coupon.country(), country));
             case Unresolvable _ -> Optional.of(new CountryNotAllowed(coupon.code(), coupon.country(), null));
-            case Unavailable _ -> Optional.of(new GeolocationUnavailable(coupon.code()));
         };
     }
 }

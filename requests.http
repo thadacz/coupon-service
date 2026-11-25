@@ -1,6 +1,6 @@
 ### Ready-made requests for the IntelliJ HTTP Client (or VS Code REST Client).
 ### The service trusts X-Forwarded-For from localhost, so it stands in for the client IP.
-### 212.77.98.9 is in Poland (wp.pl), 46.4.0.1 in Germany (Hetzner); check with https://api.country.is/<ip>.
+### 212.77.98.9 is in Poland (wp.pl), 46.4.0.1 in Germany (Hetzner), according to the DB-IP database.
 
 ### Create a coupon (the code is case-insensitive and stored upper case)
 POST http://localhost:8080/api/v1/coupons

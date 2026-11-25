@@ -17,7 +17,6 @@ enum ErrorCode {
     COUPON_USAGE_LIMIT_REACHED("Coupon usage limit reached"),
     COUPON_ALREADY_REDEEMED("Coupon already redeemed by this user"),
     REDEMPTION_NOT_FOUND("Coupon not redeemed by this user"),
-    GEOLOCATION_UNAVAILABLE("Country of the request could not be verified"),
     SERVICE_UNAVAILABLE("Service temporarily unavailable"),
     UNSUPPORTED_REQUEST("Request not supported"),
     INTERNAL_ERROR("Internal error");

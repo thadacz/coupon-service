@@ -16,16 +16,12 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-  http:
-    serviceclient:
-      geo:
-        base-url: ${GEO_BASE_URL:https://api.country.is}
-        connect-timeout: 500ms
-        read-timeout: 1s
-  cache:
-    cache-names: ip-country
-    caffeine:
-      spec: maximumSize=100000,expireAfterWrite=24h
+
+coupons:
+  geolocation:
+    # DB-IP's IP to Country Lite in MaxMind DB format, as a Spring resource location. The default
+    # is where ./gradlew downloadGeoDatabase puts it (bootRun does that); the image sets GEO_DATABASE.
+    database: ${GEO_DATABASE:file:build/geo/dbip-country-lite.mmdb}
 
 server:
   shutdown: graceful

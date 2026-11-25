@@ -24,7 +24,6 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
-import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
@@ -96,8 +95,6 @@ class RedemptionController {
                     ErrorCode.COUPON_COUNTRY_NOT_ALLOWED, detected == null
                             ? "Coupon '%s' is only for %s and your country could not be determined.".formatted(code, required)
                             : "Coupon '%s' is only for %s, your request comes from %s.".formatted(code, required, detected));
-            case GeolocationUnavailable(var code) -> Problems.unavailable(ErrorCode.GEOLOCATION_UNAVAILABLE,
-                    "The country of your request could not be verified. Try again shortly.");
         };
     }
 }

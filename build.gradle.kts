@@ -1,3 +1,11 @@
+import java.io.IOException
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.time.YearMonth
+import java.time.ZoneOffset
+import java.util.zip.GZIPInputStream
+
 plugins {
     java
     jacoco
@@ -31,11 +39,9 @@ dependencies {
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.spring.boot.starter.flyway)
-    implementation(libs.spring.boot.starter.restclient)
-    implementation(libs.spring.boot.starter.cache)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.flyway.postgresql)
-    implementation(libs.caffeine)
+    implementation(libs.maxmind.db)
     implementation(libs.springdoc.webmvc.ui)
     runtimeOnly(libs.micrometer.prometheus)
     runtimeOnly(libs.postgresql)
@@ -46,7 +52,6 @@ dependencies {
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.junit.jupiter)
-    testImplementation(libs.wiremock)
     testImplementation(libs.archunit)
     testRuntimeOnly(libs.junit.platform.launcher)
 
@@ -97,4 +102,39 @@ tasks.check {
 
 tasks.bootJar {
     archiveFileName = "app.jar"
+}
+
+// DB-IP "IP to Country Lite" in MaxMind DB format (CC BY 4.0, https://db-ip.com), the IP-to-country
+// database. bootRun and the container image use it; tests use MaxMind's test database instead.
+// DB-IP publishes a file per month; early in a month it may not be out yet, hence the fallback.
+val geoDatabase = layout.buildDirectory.file("geo/dbip-country-lite.mmdb")
+val downloadGeoDatabase by tasks.registering {
+    group = "application"
+    description = "Downloads DB-IP's IP-to-country database unless it is already there."
+    val target = geoDatabase
+    outputs.file(target)
+    onlyIf { !target.get().asFile.exists() }
+    doLast {
+        val file = target.get().asFile.toPath()
+        Files.createDirectories(file.parent)
+        val month = YearMonth.now(ZoneOffset.UTC)
+        val failures = mutableListOf<String>()
+        for (candidate in listOf(month, month.minusMonths(1))) {
+            val source = URI("https://download.db-ip.com/free/dbip-country-lite-$candidate.mmdb.gz")
+            val partial = file.resolveSibling("${file.fileName}.part")
+            try {
+                GZIPInputStream(source.toURL().openStream()).use { Files.copy(it, partial, REPLACE_EXISTING) }
+                Files.move(partial, file, REPLACE_EXISTING)
+                logger.lifecycle("Downloaded $source")
+                return@doLast
+            } catch (e: IOException) {
+                failures += "$source: $e"
+            }
+        }
+        throw GradleException("Could not download the DB-IP database:\n" + failures.joinToString("\n"))
+    }
+}
+
+tasks.bootRun {
+    dependsOn(downloadGeoDatabase)
 }

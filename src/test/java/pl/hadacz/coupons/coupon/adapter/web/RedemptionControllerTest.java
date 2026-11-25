@@ -31,7 +31,6 @@ import pl.hadacz.coupons.coupon.domain.RedemptionResult.AlreadyRedeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CountryNotAllowed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.CouponNotFound;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Expired;
-import pl.hadacz.coupons.coupon.domain.RedemptionResult.GeolocationUnavailable;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.NotYetValid;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.Redeemed;
 import pl.hadacz.coupons.coupon.domain.RedemptionResult.UsageLimitReached;
@@ -106,18 +105,6 @@ class RedemptionControllerTest {
                 HttpStatus.FORBIDDEN, "COUPON_COUNTRY_NOT_ALLOWED");
     }
 
-    @Test
-    @DisplayName("503 GEOLOCATION_UNAVAILABLE with Retry-After")
-    void geolocationUnavailable() {
-        given(redeemCoupon.handle(any())).willReturn(new GeolocationUnavailable(WIOSNA));
-
-        assertThat(redeem("WIOSNA", "83.0.0.1"))
-                .hasStatus(HttpStatus.SERVICE_UNAVAILABLE)
-                .hasHeader("Retry-After", "5")
-                .bodyJson()
-                .extractingPath("$.errorCode")
-                .isEqualTo("GEOLOCATION_UNAVAILABLE");
-    }
 
     @Test
     @DisplayName("400 when userId is missing")

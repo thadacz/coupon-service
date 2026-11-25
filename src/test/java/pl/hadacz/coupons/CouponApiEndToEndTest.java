@@ -1,17 +1,11 @@
 package pl.hadacz.coupons;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-
 import java.util.Map;
-
-import com.github.tomakehurst.wiremock.WireMockServer;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -19,37 +13,24 @@ import org.springframework.test.web.servlet.client.RestTestClient;
 import pl.hadacz.coupons.support.IntegrationTest;
 
 /// Whole stack over HTTP: Tomcat (with RemoteIpValve), controllers, use cases, PostgreSQL,
-/// and the geolocation client talking to a WireMock stand-in for api.country.is.
+/// and countries from MaxMind's test IP database (see src/test/resources/geo).
 @IntegrationTest
 class CouponApiEndToEndTest {
 
-    private static final String POLISH_IP = "83.0.0.1";
-    private static final String GERMAN_IP = "85.0.0.1";
+    // Countries in the test database; the Polish client also covers IPv6 end to end.
+    private static final String POLISH_IP = "2a02:d100::1";
+    private static final String GERMAN_IP = "55.0.0.4";
 
     @Autowired
     RestTestClient client;
 
     @Autowired
-    WireMockServer geoProvider;
-
-    @Autowired
     JdbcClient jdbc;
-
-    @Autowired
-    CacheManager cacheManager;
 
     @BeforeEach
     void reset() {
         jdbc.sql("DELETE FROM coupon_redemptions").update();
         jdbc.sql("DELETE FROM coupons").update();
-        geoProvider.resetAll();
-        cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
-        geoProvider.stubFor(get("/" + POLISH_IP).willReturn(okJson("""
-                {"ip": "83.0.0.1", "country": "PL"}
-                """)));
-        geoProvider.stubFor(get("/" + GERMAN_IP).willReturn(okJson("""
-                {"ip": "85.0.0.1", "country": "DE"}
-                """)));
     }
 
     @Test

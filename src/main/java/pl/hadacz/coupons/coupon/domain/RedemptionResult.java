@@ -33,7 +33,4 @@ public sealed interface RedemptionResult {
 
     record AlreadyRedeemed(CouponCode code, UserId userId) implements RedemptionResult {
     }
-
-    record GeolocationUnavailable(CouponCode code) implements RedemptionResult {
-    }
 }

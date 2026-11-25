@@ -5,7 +5,7 @@ unique code, a usage limit and a country; it can be redeemed only from that coun
 first come first served, and at most once per user.
 
 **Stack:** Java 25 (LTS), Spring Boot 4.2, PostgreSQL 19, Hibernate 7, Flyway, Gradle 9,
-JUnit 6, Testcontainers 2, WireMock, ArchUnit.
+DB-IP IP-to-country database read with MaxMind's reader, JUnit 6, Testcontainers 2, ArchUnit.
 
 ## Quick start
 
@@ -13,7 +13,8 @@ JUnit 6, Testcontainers 2, WireMock, ArchUnit.
 # Everything in containers (PostgreSQL 19 + the service on :8080)
 docker compose --profile app up --build
 
-# Or run the service locally; spring-boot-docker-compose starts PostgreSQL from compose.yaml
+# Or run the service locally; spring-boot-docker-compose starts PostgreSQL from compose.yaml.
+# The first run downloads the IP-to-country database (8 MB) into build/geo.
 ./gradlew bootRun
 ```
 
@@ -66,7 +67,6 @@ member. Clients should branch on `errorCode`, since two problems can share a sta
 | At or after `validUntil` | 409 | `COUPON_EXPIRED` |
 | Usage limit reached | 409 | `COUPON_USAGE_LIMIT_REACHED` |
 | This user already redeemed this coupon | 409 | `COUPON_ALREADY_REDEEMED` |
-| Geolocation provider unavailable | 503 + `Retry-After` | `GEOLOCATION_UNAVAILABLE` |
 | Database down, or every pooled connection busy for 2 s (overload) | 503 + `Retry-After` | `SERVICE_UNAVAILABLE` |
 | Unknown path, wrong method or media type | 404, 405, 415... | `UNSUPPORTED_REQUEST` |
 | Anything unforeseen (logged with its stack trace, never returned) | 500 | `INTERNAL_ERROR` |
@@ -89,9 +89,9 @@ flowchart TB
     end
     web --> app
     ports --> persistence[Persistence adapter<br/>Hibernate + explicit SQL, Flyway]
-    ports --> geo[Geolocation adapter<br/>HTTP service client, retry, limit, cache]
+    ports --> geo[Geolocation adapter<br/>local IP database, MaxMind reader]
     persistence --> db[(PostgreSQL 19)]
-    geo --> countryis([api.country.is])
+    geo --> dbip[(DB-IP file, in memory)]
 ```
 
 ```
@@ -102,7 +102,7 @@ pl.hadacz.coupons
 │   └── adapter
 │       ├── web          controllers, request/response records, problem details, metrics
 │       ├── persistence  JPA entity, Spring Data repository, port implementation
-│       └── geolocation  country.is client, gateway (retry, limit), resolver (cache)
+│       └── geolocation  CountryResolver over the local IP database
 └── config               wiring of the framework-free use cases, OpenAPI
 ```
 
@@ -133,8 +133,7 @@ flowchart TB
     sv -->|before / after| e409v[409 COUPON_NOT_YET_VALID / COUPON_EXPIRED]
     sv --> s2{Exhausted in the snapshot?}
     s2 -->|yes| e409a[409 COUPON_USAGE_LIMIT_REACHED]
-    s2 --> s3[Resolve country: cache, then api.country.is]
-    s3 -->|provider down| e503[503 GEOLOCATION_UNAVAILABLE]
+    s2 --> s3[Look up the country in the local IP database]
     s3 --> s4{Client in the coupon's country?}
     s4 -->|no or unknown| e403[403 COUPON_COUNTRY_NOT_ALLOWED]
     subgraph tx [Transaction, READ COMMITTED]
@@ -148,7 +147,7 @@ flowchart TB
     s6 -->|COMMIT| ok[201 Created]
 ```
 
-Every refusal before the transaction (dates, exhausted, country, provider down) first checks
+Every refusal before the transaction (dates, exhausted, country) first checks
 whether this user already redeemed the coupon, and if so answers `COUPON_ALREADY_REDEEMED`
 instead: a user who took the last use and retries is told that, not that the coupon ran out.
 The lookup is one indexed query on the refusal path only; a successful redemption does not pay for it.
@@ -166,11 +165,11 @@ Why this is correct:
   the `UPDATE` to `COMMIT`. The foreign key check takes `FOR KEY SHARE` on the coupon row and the
   counter update takes `FOR NO KEY UPDATE`; those modes do not conflict, and every transaction
   locks in the same order.
-- **No I/O inside the transaction.** Geolocation happens before it, so a slow provider cannot hold
-  connections or locks.
+- **Nothing slow inside the transaction.** Every check runs before it, so locks are held only for
+  the two statements.
 - **Any number of instances.** The database is the only shared state.
-- **Safe fast path.** The exhausted check reads without locks. The counter only grows, so a snapshot that says
-  "exhausted" is never wrong, and exhausted coupons do not cost a geolocation call.
+- **Safe fast path.** The exhausted check reads without locks. The counter only grows, so a snapshot
+  that says "exhausted" is never wrong.
 - **One clock reading.** The instant checked against the validity period is the one stored as
   `redeemed_at`, so a recorded redemption never falls outside the coupon's period, even when the
   request straddles `validUntil`.
@@ -185,30 +184,30 @@ comes from the SQL above.
   `X-Forwarded-For` is used only when the request comes from a trusted proxy
   (`server.tomcat.remoteip.internal-proxies`). In production that must be the load balancer's
   addresses. Reading the header directly would let any client claim a Polish IP.
-- **Provider.** [country.is](https://country.is): HTTPS, no API key, free also for commercial use,
-  data from MaxMind GeoLite2 and Cloudflare refreshed daily. Private, loopback and similar
-  addresses are never sent to it.
-- **Resilience.** Declarative HTTP service client with 500 ms connect and 1 s read timeouts;
-  `@Retryable` for 5xx and I/O errors only; `@ConcurrencyLimit(10)` as a bulkhead, because with
-  virtual threads no thread pool bounds outgoing calls; answers cached per IP in Caffeine for 24 h,
-  failures never cached.
-- **Fail closed.** If the country cannot be verified, the coupon is not redeemed (503 with
-  `Retry-After`). A country-restricted coupon is a business rule; whether to fail open instead is a
-  business decision, not a technical default.
-- **GDPR.** An IP address is personal data. The service does not store it or log it. Sending it to
-  a third party is still a transfer; see the production notes below.
+- **Local database.** Countries come from [DB-IP's free IP to Country Lite](https://db-ip.com/db/download/ip-to-country-lite)
+  database (CC BY 4.0, no API key, updated monthly) in the standard MaxMind DB format, read into
+  memory at startup with MaxMind's own reader (8 MB). A lookup needs no network call, so there is
+  no rate limit, no latency and no provider outage: geolocation scales with the service.
+  `bootRun` and the image build download the file; tests use MaxMind's small test database.
+- **Never guessed.** Private, loopback and similar addresses have no country, whatever the
+  database says.
+- **Fail closed.** If the country cannot be determined, the coupon is not redeemed (403). A
+  country-restricted coupon is a business rule; whether to fail open instead is a business
+  decision, not a technical default.
+- **GDPR.** An IP address is personal data. The service does not store it, log it or send it
+  anywhere.
 
 ## Testing
 
 | Level | Tools | What it checks |
 | --- | --- | --- |
 | Domain | JUnit 6, AssertJ | Code normalization (also under a Turkish default locale), ISO countries, IP classification, coupon invariants, validity period bounds |
-| Use cases | In-memory fakes, fixed `Clock` | Every `RedemptionResult`, order of checks, no geolocation call for missing, expired or exhausted coupons |
+| Use cases | In-memory fakes, fixed `Clock` | Every `RedemptionResult`, order of checks, no country lookup for missing, expired or exhausted coupons |
 | Web | `@WebMvcTest`, `MockMvcTester` | Status codes, `Location`, problem details, validation |
 | Persistence | Testcontainers PostgreSQL 19 | Schema constraints, duplicate codes, the atomic redemption |
 | Concurrency | Virtual threads, start gate | Limit never exceeded, one use per user, racing creations of `WIOSNA`/`wiosna` |
-| Geolocation | WireMock | Mapping, cache, retries on 5xx, no retry on 429, timeouts |
-| End to end | `RestTestClient` on a random port | Full flow through Tomcat, including `X-Forwarded-For` |
+| Geolocation | MaxMind's test database | IPv4 and IPv6 lookups, addresses without data, private addresses, a missing file |
+| End to end | `RestTestClient` on a random port | Full flow through Tomcat, including `X-Forwarded-For` with IPv4 and IPv6 clients |
 | Architecture | ArchUnit | Core free of frameworks, adapters independent |
 
 The build fails below 90% line coverage of the domain and application packages.
@@ -241,9 +240,13 @@ so a duplicate code surfaces inside the adapter.
 controller maps it with an exhaustive `switch`: a new outcome does not compile until it has an HTTP
 mapping. Exceptions are reserved for invalid input and technical failures.
 
-**ADR 5: country.is behind a port, cached, failing closed.** Chosen because reviewers can run the
-project without an API key. Rejected for now: IPinfo Lite (needs a token), ip-api.com (free tier is
-HTTP-only and non-commercial).
+**ADR 5: A local IP-to-country database, failing closed.** The first version called the free
+country.is API per redemption. That does not scale: it allows 10 requests/s, and every instance
+calls from the same egress IP. DB-IP Lite is free, needs no API key and ships in the standard
+MaxMind DB format, so MaxMind's reader does the lookup in memory. Rejected: a free web API (rate
+limits, latency, an outage stops redemptions, and IPs go to a third party), MaxMind GeoLite2 (needs
+an account and a license key, so a reviewer could not build the project as is), a table in
+PostgreSQL (an extra query on the hottest path, against the database that is already the bottleneck).
 
 **ADR 6: Client IP only through `RemoteIpValve` with trusted proxies.** Rejected: Spring's
 `ForwardedHeaderFilter` (trusts every header) and reading `X-Forwarded-For` by hand.
@@ -258,10 +261,9 @@ overload. Rejected: WebFlux with R2DBC, more complex for no gain here.
   each other. If a single campaign outgrows that, the next steps are sharded counters (N rows per
   coupon), a pool of pre-created tokens claimed with `FOR UPDATE SKIP LOCKED`, or a Redis counter
   reconciled with the database.
-- **Geolocation at scale.** country.is allows 10 requests/s per IP, and all calls leave from the
-  service's IP. In production: a country header from the CDN (e.g. `CF-IPCountry`), a local
-  MaxMind or DB-IP database, or a self-hosted country.is. Any of them is a new adapter behind
-  `CountryResolver`; nothing else changes. This also keeps IPs inside the company (GDPR).
+- **Geolocation data.** The database is as fresh as the image: DB-IP publishes monthly, so the
+  image is rebuilt at least monthly (a scheduled CI job). Behind a CDN, a country header such as
+  `CF-IPCountry` would be another adapter behind `CountryResolver`; nothing else changes.
 - **Security.** Authentication was out of scope. In production `userId` comes from the access token
   (`sub`), not the body; creating coupons requires a role; rate limiting sits at the gateway.
 
@@ -281,6 +283,13 @@ overload. Rejected: WebFlux with R2DBC, more complex for no gain here.
 - Coupon deactivation, and releasing a use on order cancellation (saga step).
 - JVM AOT cache in the image (Java 25) for faster scale-out; the training run needs the database
   and Flyway disabled.
+
+## Data attribution
+
+IP geolocation by [DB-IP](https://db-ip.com), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The file is downloaded at build time
+and is not part of this repository. The test database in `src/test/resources/geo` is MaxMind's,
+under the Apache License 2.0 or MIT.
 
 ## How AI was used
 
