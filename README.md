@@ -1,5 +1,7 @@
 # Coupon Service
 
+[![CI](https://github.com/thadacz/coupon-service/actions/workflows/ci.yml/badge.svg)](https://github.com/thadacz/coupon-service/actions/workflows/ci.yml)
+
 A REST service for creating discount coupons and registering their use. Each coupon has a
 case-insensitive unique code, a usage limit and a country: it can be used only by clients from
 that country (by IP), first come first served, at most once per user, and the limit holds under
