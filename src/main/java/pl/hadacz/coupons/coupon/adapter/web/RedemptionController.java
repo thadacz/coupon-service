@@ -3,7 +3,6 @@ package pl.hadacz.coupons.coupon.adapter.web;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,8 +33,6 @@ import pl.hadacz.coupons.coupon.domain.UserId;
 @RestController
 @RequestMapping(path = "/api/v1/coupons/{code}/redemptions", produces = MediaType.APPLICATION_JSON_VALUE)
 class RedemptionController {
-
-    private static final String RETRY_AFTER_SECONDS = "5";
 
     private final RedeemCouponHandler redeemCoupon;
     private final CouponQueries queries;
@@ -99,11 +96,8 @@ class RedemptionController {
                     ErrorCode.COUPON_COUNTRY_NOT_ALLOWED, detected == null
                             ? "Coupon '%s' is only for %s and your country could not be determined.".formatted(code, required)
                             : "Coupon '%s' is only for %s, your request comes from %s.".formatted(code, required, detected));
-            case GeolocationUnavailable(var code) -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .header(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS)
-                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                    .body(Problems.problem(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.GEOLOCATION_UNAVAILABLE,
-                            "The country of your request could not be verified. Try again shortly."));
+            case GeolocationUnavailable(var code) -> Problems.unavailable(ErrorCode.GEOLOCATION_UNAVAILABLE,
+                    "The country of your request could not be verified. Try again shortly.");
         };
     }
 }

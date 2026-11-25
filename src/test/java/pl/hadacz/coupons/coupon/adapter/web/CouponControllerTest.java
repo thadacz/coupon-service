@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import pl.hadacz.coupons.coupon.application.CouponQueries;
 import pl.hadacz.coupons.coupon.application.CreateCouponCommand;
@@ -171,6 +172,50 @@ class CouponControllerTest {
                 .bodyJson()
                 .extractingPath("$.code")
                 .isEqualTo("WIOSNA");
+    }
+
+    @Test
+    @DisplayName("answers 503 with Retry-After when the database cannot be reached")
+    void databaseUnavailable() {
+        given(queries.findByCode(any())).willThrow(new CannotCreateTransactionException("Could not open JPA EntityManager"));
+
+        assertThat(mvc.get().uri("/api/v1/coupons/WIOSNA"))
+                .hasStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                .hasHeader("Retry-After", "5")
+                .hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("SERVICE_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("answers an unexpected failure with a 500 problem that reveals no internals")
+    void unexpectedFailure() {
+        given(queries.findByCode(any())).willThrow(new IllegalStateException("secret internal detail"));
+
+        var result = mvc.get().uri("/api/v1/coupons/WIOSNA").exchange();
+
+        assertThat(result)
+                .hasStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("INTERNAL_ERROR");
+        assertThat(result).bodyText().doesNotContain("secret internal detail");
+    }
+
+    @Test
+    @DisplayName("adds an errorCode to Spring MVC's own errors, such as a wrong method or an unknown path")
+    void frameworkErrorsCarryErrorCode() {
+        assertThat(mvc.delete().uri("/api/v1/coupons/WIOSNA"))
+                .hasStatus(HttpStatus.METHOD_NOT_ALLOWED)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("UNSUPPORTED_REQUEST");
+        assertThat(mvc.get().uri("/api/v1/nothing-here"))
+                .hasStatus(HttpStatus.NOT_FOUND)
+                .bodyJson()
+                .extractingPath("$.errorCode")
+                .isEqualTo("UNSUPPORTED_REQUEST");
     }
 
     @Test

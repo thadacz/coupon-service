@@ -67,6 +67,9 @@ member. Clients should branch on `errorCode`, since two problems can share a sta
 | Usage limit reached | 409 | `COUPON_USAGE_LIMIT_REACHED` |
 | This user already redeemed this coupon | 409 | `COUPON_ALREADY_REDEEMED` |
 | Geolocation provider unavailable | 503 + `Retry-After` | `GEOLOCATION_UNAVAILABLE` |
+| Database down, or every pooled connection busy for 2 s (overload) | 503 + `Retry-After` | `SERVICE_UNAVAILABLE` |
+| Unknown path, wrong method or media type | 404, 405, 415... | `UNSUPPORTED_REQUEST` |
+| Anything unforeseen (logged with its stack trace, never returned) | 500 | `INTERNAL_ERROR` |
 
 ## Architecture
 
