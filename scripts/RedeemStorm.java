@@ -4,9 +4,9 @@
 ///     java scripts/RedeemStorm.java WIOSNA 1000
 ///     java scripts/RedeemStorm.java WIOSNA 1000 http://localhost:8080 212.77.98.9
 ///
-/// Every attempt uses a different user and the same client IP, so the geolocation provider
-/// is asked once and the rest is served from the cache. With a coupon limit of N, the expected
-/// output is exactly N x 201 and the rest 409, whatever the concurrency.
+/// Every attempt uses a different user and the same client IP, from the coupon's country.
+/// With a coupon limit of N, the expected output is exactly N x 201 and the rest 409,
+/// whatever the concurrency.
 
 import module java.net.http;
 
@@ -23,6 +23,8 @@ void main(String[] args) throws Exception {
     HttpClient http = HttpClient.newHttpClient();
     URI uri = URI.create(baseUrl + "/api/v1/coupons/" + code + "/redemptions");
     Map<Integer, LongAdder> statuses = new ConcurrentSkipListMap<>();
+    // Attempts that got no HTTP answer at all (refused or reset connections), by exception type.
+    Map<String, LongAdder> failures = new ConcurrentSkipListMap<>();
     CountDownLatch startGate = new CountDownLatch(1);
 
     long started;
@@ -36,8 +38,13 @@ void main(String[] args) throws Exception {
                         .header("X-Forwarded-For", clientIp)
                         .POST(HttpRequest.BodyPublishers.ofString("{\"userId\":\"" + userId + "\"}"))
                         .build();
-                int status = http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-                statuses.computeIfAbsent(status, _ -> new LongAdder()).increment();
+                try {
+                    int status = http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+                    statuses.computeIfAbsent(status, _ -> new LongAdder()).increment();
+                } catch (IOException e) {
+                    failures.computeIfAbsent(e.getClass().getSimpleName() + ": " + e.getMessage(),
+                            _ -> new LongAdder()).increment();
+                }
                 return null;
             });
         }
@@ -48,4 +55,5 @@ void main(String[] args) throws Exception {
 
     IO.println("%d attempts in %d ms".formatted(attempts, took.toMillis()));
     statuses.forEach((status, count) -> IO.println("  HTTP %d: %d".formatted(status, count.sum())));
+    failures.forEach((failure, count) -> IO.println("  no answer, %s: %d".formatted(failure, count.sum())));
 }
